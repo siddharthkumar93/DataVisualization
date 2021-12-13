@@ -1,0 +1,315 @@
+---
+title: "Cancer Statistic of Australia"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(readr)
+library(plotly)
+library(flexdashboard)
+```
+
+```{r data-load}
+cancer_incidence <- read_csv("Cancer-incidence-age-standardised-rates-5-year-age-groups.csv", 
+                             skip = 5)
+
+cancer_mortality <- read_csv("Cancer-mortality-age-standardised-rates-5-year-age-groups.csv", 
+                             skip = 5)
+
+
+filtered_incidence <- cancer_incidence %>% filter(`Age group (years)` == "All ages combined")
+filterd_mortality <- cancer_mortality %>% filter(`Age group (years)` == "All ages combined")
+
+#projected new case count
+case_count_male <- filtered_incidence %>% 
+                   filter(`Year` == "2021" & 
+                          `Sex` == "Males" &
+                          `Cancer group/site` == "All cancers combined")
+
+case_count_female <- filtered_incidence %>% 
+                     filter(`Year` == "2021" & 
+                            `Sex` == "Females" &
+                            `Cancer group/site` == "All cancers combined" )
+
+#projected death
+death_count <- filterd_mortality %>% 
+               filter(`Year` == "2021" & 
+                      `Sex` == "Persons" & 
+                      `Cancer group/site` == "All cancers combined" )
+
+#top 10 diagnosed Cancer based on ASR 
+projected_incidence <- filtered_incidence %>% 
+                       filter(`Year` == "2021" & 
+                              `Sex` == "Persons" & 
+                              `Cancer group/site` != "All blood cancers combined" & 
+                              `Cancer group/site` != "All cancers combined" &
+                              `Cancer group/site` != "All sarcomas combined" )
+
+
+#top 10 Cancer based on mortality rate
+projected_mortality <-  filterd_mortality %>% 
+                        filter(`Year` == "2021" & 
+                               `Sex` == "Persons" & 
+                               `Cancer group/site` != "All blood cancers combined" & 
+                               `Cancer group/site` != "All cancers combined" &
+                               `Cancer group/site` != "All sarcomas combined" )
+
+
+```
+
+Dashboard
+=======================================================================
+
+Row 
+-----------------------------------------------------------------------
+
+### Total Number of Projected Death, 2021
+```{r value-box1}
+valueBox(death_count$Count,
+         icon = "fa-skull",
+         color = "#EB020A")
+```
+
+### Projected Number of New Cases, 2021
+```{r value-box2}
+valueBox(case_count_male$Count ,
+         icon = "fa-male",
+         color = "#3B9DFF")
+```
+
+### Projected Number of New Cases, 2021
+```{r value-box3}
+valueBox(case_count_female$Count,
+         icon = "fa-female",
+         color = "#EB44AE")
+```
+
+Row
+-----------------------------------------------------------------------
+### <b>Projected Cancer for 2021 with highest Incidence ASR</b>
+```{r top-10-incidence}
+projected_incidence$`Cancer group/site` <- factor(projected_incidence$`Cancer group/site`, 
+                                                  levels = unique(projected_incidence$`Cancer group/site`)[tail(order(projected_incidence$`Age-specific rate (per 100,000)`),10)])
+
+plot1 <- plot_ly(projected_incidence, 
+                 y= ~`Cancer group/site`,
+                 x=~`Age-specific rate (per 100,000)`) %>%
+         add_bars(width = 0.5,
+                 orientation = 'h') %>%
+         layout(title = 'Projected Cancer for 2021, Incidence Rate',
+                titlefont = list(size = 14),
+                xaxis = list(title = 'Incidence ASR(per 100,000)'),
+                yaxis = list(title = ""),
+                legend = list(title=list(text='<b> Incidence Rate </b>')))
+
+plot1
+
+```
+
+### <b>Projected Cancer for 2021 with highest Mortality ASR</b>
+```{r top-10-mortality}
+projected_mortality$`Cancer group/site` <- factor(projected_mortality$`Cancer group/site`, 
+                                                  levels = unique(projected_mortality$`Cancer group/site`)[tail(order(projected_mortality$`Age-specific rate (per 100,000)`),10)])
+
+plot2 <- plot_ly(projected_mortality, 
+                 y = ~`Cancer group/site`,
+                 x = ~`Age-specific rate (per 100,000)`) %>%
+         add_bars(width = 0.5,
+                 orientation = 'h') %>%
+         layout(title = 'Projected Cancer for 2021, Mortality Rate',
+                titlefont = list(size = 14),
+                xaxis = list(title = 'Mortality ASR(per 100,000)'),
+                yaxis = list(title = ""),
+                legend = list(title=list(text='<b> Incidence Rate </b>')))
+plot2 
+
+
+```
+
+Row
+-----------------------------------------------------------------------
+### Information
+```{r info}
+caption = "<b> Incidence : </b> New cases of Cancer reported. <br>
+           <b> Mortality : </b> Death from Cancer. <br>
+           <b> Age-standardised Rate (ASR) : </b> Rate of Cancer (cases diagnosed/ death) per 100,000. <br>"
+
+
+valueBox("Information", 
+         caption = caption, 
+         icon ="fa-info-circle", 
+         color = "#10b5b5")
+```
+
+
+
+Exploratory Graph 
+=======================================================================
+
+Sidebar {.sidebar data-width=240} 
+-----------------------------------------------------------------------
+<br>
+**Select Cancer Type**
+```{r}
+selectInput("cancer_type", "Cancer Type", choices = unique(filtered_incidence$`Cancer group/site`), selected = "Breast cancer")
+
+getCancerIncidence <- reactive({
+  sprintf('Incedence ASR of %s by Sex', input$cancer_type)
+})
+
+getCancerMortality <- reactive({
+  sprintf('Mortality ASR of %s by Sex', input$cancer_type)
+})
+
+
+```
+
+**Select Year**
+```{r}
+selectInput("year", "Year", choices = unique(filtered_incidence$Year), selected = "2021")
+
+getCancerIncidenceYear <- reactive({
+  sprintf('Incedence ASR of %s by age-group for %s.', input$cancer_type, input$year)
+})
+
+getCancerMortalityYear <- reactive({
+  sprintf('Mortality ASR of %s by age-group for %s.', input$cancer_type, input$year)
+})
+
+```
+
+
+Row 
+-----------------------------------------------------------------------
+### <b> `r renderText(getCancerIncidence())` </b>
+```{r}
+renderPlotly({
+  
+plt <-  filtered_incidence %>% 
+        filter(`Cancer group/site` == input$cancer_type) %>% 
+        plot_ly( x = ~`Year`, 
+                 y = ~`Age-specific rate (per 100,000)`,
+                 color= ~`Sex`, 
+                 colors = "YlOrRd", 
+                 type = 'scatter', 
+                 mode = 'lines+markers',
+                 hovertemplate = paste('<b>Year </b>: %{x}<br>','<b>Rate </b>: %{y}')) %>%
+        layout(title = 'Age-standardised Rates by Sex',
+               xaxis = list(title = 'Year'),
+               yaxis = list(title = 'ASR (per 100,000)'),
+               legend = list(title=list(text='<b> Incidence Rate </b>')),
+               hovermode = "x unified")
+
+plt
+
+})
+```
+
+### <b> `r renderText(getCancerMortality())` </b>
+```{r}
+renderPlotly({
+  
+plt2 <- filterd_mortality %>% 
+        filter(`Cancer group/site` == input$cancer_type) %>%
+        plot_ly( x = ~`Year`, 
+                 y = ~`Age-specific rate (per 100,000)`,
+                 color = ~`Sex`, 
+                 colors = "Blues",
+                 type = 'scatter', 
+                 mode = 'lines+markers',
+                 hovertemplate = paste('<b>Year </b>: %{x}<br>','<b>Rate </b>: %{y}')) %>%
+        layout(title = 'Age-standardised Rates by Sex',
+               xaxis = list(title = 'Year'),
+               yaxis = list(title = 'ASR (per 100,000)'),
+               legend = list(title=list(text='<b> Mortality Rate </b>')),
+               hovermode = "x unified")
+
+plt2
+
+})
+```
+
+Row 
+-----------------------------------------------------------------------
+
+###  <b> `r renderText(getCancerIncidenceYear())`</b>
+```{r}
+renderPlotly({
+  
+plt3 <- cancer_incidence %>% 
+        filter(`Cancer group/site` == input$cancer_type & `Year` == input$year) %>% 
+        plot_ly(x = ~`Age group (years)`, 
+                y = ~`Age-specific rate (per 100,000)`,
+                color = ~Sex, 
+                colors = "YlOrRd", 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                 hovertemplate = paste('<b>Age Group </b>: %{x}<br>','<b>Rate </b>: %{y}')) %>%
+        layout(title = 'Age-standardised Rates by Sex',
+               xaxis = list(title = 'Age Group'),
+               yaxis = list(title = 'ASR (per 100,000)'),
+               legend = list(title=list(text='<b> Incidence Rate </b>')),
+               hovermode = "x unified")
+  
+plt3
+
+})
+```
+
+
+###  <b> `r renderText(getCancerMortalityYear())`  </b>
+```{r}
+renderPlotly({
+  
+plt4 <- cancer_mortality %>% 
+        filter(`Cancer group/site` == input$cancer_type & `Year` == input$year) %>%
+        plot_ly(x = ~`Age group (years)`, 
+                y = ~`Age-specific rate (per 100,000)`,
+                color = ~Sex, 
+                colors = "Blues", 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                 hovertemplate = paste('<b>Age Group </b>: %{x}<br>','<b>Rate </b>: %{y}'))%>%
+        layout(title = 'Age-standardised Rates by Sex',
+               xaxis = list(title = 'Age Group'),
+               yaxis = list(title = 'ASR (per 100,000)'),
+               legend = list(title=list(text='<b> Mortality Rate </b>')),
+               hovermode = "x unified")
+  
+plt4
+
+})
+
+```
+
+
+
+Reference
+=======================================================================
+
+Column
+-----------------------------------------------------------------------
+
+- Data Source: Australian Institute of Health and Welfare. 2021. Cancer Data - Australian Institute of Health and Welfare. [online] 
+Available at: <https://www.aihw.gov.au/reports-data/health-conditions-disability-deaths/cancer/data> [Accessed 9 June 2021].
+
+- Colorbrewer2.org. 2015. ColorBrewer: Color Advice for Maps. [online]
+Available at: <https://colorbrewer2.org/> [Accessed 10 June 2021].
+
+- Kulkarni, S., 2019. Building an HR Dashboard in R using Flexdashboard. [online] Medium. 
+Available at: <https://towardsdatascience.com/building-an-hr-dashboard-in-r-using-flexdashboard-76d14ed3f32> [Accessed 11 June 2021].
+
+- Plotly.com. 2019. Plotly R Graphing Library. [online]
+Available at: <https://plotly.com/r/> [Accessed 11 June 2021].
+
+- Voevodin, N., 2021. Maps | R, Not the Best Practices. [online] Bookdown.org. 
+Available at: <https://bookdown.org/voevodin_nv/R_Not_the_Best_Practices/maps.html> [Accessed 11 June 2021].
+
+- Berishvili, N., 2020. Create an Interactive Dashboard with Shiny, Flexdashboard, and Plotly. [online] Medium.
+Available at: <https://towardsdatascience.com/create-an-interactive-dashboard-with-shiny-flexdashboard-and-plotly-b1f025aebc9c> [Accessed 11 June 2021].
